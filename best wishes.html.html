@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Happy Teachers' Day — Prof. Wu</title>
+<style>
+  :root{
+    --bg:#050509;
+    --panel:rgba(12,12,18,.58);
+    --text:#f7f3ea;
+    --muted:#c9c3b8;
+    --gold:#f4c86a;
+  }
+  *{box-sizing:border-box}
+  html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--bg);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}
+  #scene{position:fixed;inset:0}
+  #scene canvas{display:block;width:100%;height:100%}
+  .vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 45%,transparent 0 38%,rgba(0,0,0,.18) 62%,rgba(0,0,0,.64) 100%)}
+  .grain{position:fixed;inset:-30%;pointer-events:none;opacity:.035;mix-blend-mode:screen;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.9'/%3E%3C/svg%3E");animation:grain .24s steps(2) infinite}
+  @keyframes grain{0%{transform:translate(0,0)}25%{transform:translate(2%,1%)}50%{transform:translate(-1%,2%)}75%{transform:translate(1%,-2%)}100%{transform:translate(0,0)}}
+  .topbar{position:fixed;left:18px;right:18px;top:16px;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;pointer-events:none}
+  .badge,.help{backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background:var(--panel);border:1px solid rgba(255,255,255,.08);box-shadow:0 14px 45px rgba(0,0,0,.25);border-radius:14px;padding:10px 13px;pointer-events:auto}
+  .badge{display:flex;align-items:center;gap:9px;font-size:13px;letter-spacing:.02em}
+  .dot{width:8px;height:8px;border-radius:50%;background:#f4c86a;box-shadow:0 0 18px #f4c86a}
+  .dot.live{background:#77e89d;box-shadow:0 0 18px #77e89d}
+  .help{font-size:12px;line-height:1.5;color:var(--muted);max-width:330px}
+  .help b{color:#fff;font-weight:600}
+  .footer{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.48);pointer-events:none;white-space:nowrap}
+  #video{position:fixed;right:18px;bottom:18px;width:148px;height:102px;border-radius:13px;object-fit:cover;transform:scaleX(-1);opacity:.28;border:1px solid rgba(255,255,255,.1);box-shadow:0 10px 38px rgba(0,0,0,.28);transition:opacity .25s ease;background:#0d0d12}
+  #video:hover{opacity:.65}
+  #fallbackButton{position:fixed;right:18px;bottom:132px;border:1px solid rgba(255,255,255,.12);background:rgba(20,20,28,.72);backdrop-filter:blur(12px);color:#fff;padding:8px 11px;border-radius:10px;font-size:12px;cursor:pointer}
+  #fallbackButton:hover{background:rgba(35,35,45,.86)}
+  @media (max-width:720px){.help{display:none}.footer{bottom:12px;font-size:9px}#video{width:110px;height:76px}.topbar{left:10px;right:10px;top:10px}}
+</style>
+</head>
+<body>
+<div id="scene"></div>
+<div class="vignette"></div>
+<div class="grain"></div>
+
+<div class="topbar">
+  <div class="badge"><span id="statusDot" class="dot"></span><span id="statusText">Camera starting…</span></div>
+  <div class="help"><b>Open palm</b> → open the card · <b>Close your hand</b> → close it<br><b>Click the card</b> or the button to open/close · Drag to rotate · Scroll to zoom</div>
+</div>
+<video id="video" playsinline muted></video>
+<button id="fallbackButton">Open card</button>
+<div class="footer">A small Teachers' Day wish, made with gratitude</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script>
+(() => {
+  const container = document.getElementById('scene');
+  const video = document.getElementById('video');
+  const statusText = document.getElementById('statusText');
+  const statusDot = document.getElementById('statusDot');
+  const fallbackButton = document.getElementById('fallbackButton');
+
+  // ---------- THREE.JS SCENE ----------
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x07070b, 0.055);
+
+  const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.1, 100);
+  camera.position.set(0, 1.0, 8.2);
+
+  const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setClearColor(0x050509, 1);
+  container.appendChild(renderer.domElement);
+
+  // Lighting
+  scene.add(new THREE.AmbientLight(0x51445f, 0.68));
+  const key = new THREE.DirectionalLight(0xffe7be, 2.6);
+  key.position.set(3.5, 5.8, 5.5); key.castShadow = true;
+  key.shadow.mapSize.set(2048,2048); scene.add(key);
+  const rim = new THREE.PointLight(0xff8a4d, 36, 13, 2);
+  rim.position.set(-4, 1.8, -1.4); scene.add(rim);
+  const fill = new THREE.PointLight(0x8f79ff, 20, 11, 2);
+  fill.position.set(4.5, .2, 2.5); scene.add(fill);
+
+  // Floor
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(26, 26),
+    new THREE.MeshStandardMaterial({color:0x09090d, roughness:.9, metalness:.05})
+  );
+  floor.rotation.x = -Math.PI/2; floor.position.y = -2.35; floor.receiveShadow = true; scene.add(floor);
+
+  // Candle-glow background particles
+  const glowTex = makeGlowTexture();
+  const candleGroup = new THREE.Group(); scene.add(candleGroup);
+  const candleLights = [];
+  for(let i=0;i<18;i++){
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:.18+Math.random()*.23, color:0xffb36a}));
+    const x=(Math.random()-.5)*16, y=-1.6+Math.random()*4.7, z=-5-Math.random()*3;
+    spr.position.set(x,y,z); const s=.4+Math.random()*1.1; spr.scale.set(s,s*1.45,1); spr.userData.phase=Math.random()*Math.PI*2; candleGroup.add(spr);
+    if(i<5){ const l=new THREE.PointLight(0xff9f56, 5+Math.random()*5, 4, 2); l.position.set(x,y,z+1.6); l.userData.phase=Math.random()*6; scene.add(l); candleLights.push(l); }
+  }
+
+  // ---------- CARD ----------
+  const cardRoot = new THREE.Group();
+  // Present the closed cover toward the viewer on first load.
+  cardRoot.rotation.x = 0.82; scene.add(cardRoot);
+
+  const W=4.75,H=3.15,T=.10;
+  const paperMat = new THREE.MeshPhysicalMaterial({color:0xf5ead8, roughness:.62, metalness:0, clearcoat:.08});
+  const edgeMat = new THREE.MeshStandardMaterial({color:0xcdbd9f, roughness:.75});
+
+  const base = new THREE.Mesh(new THREE.BoxGeometry(W,T,H), paperMat);
+  base.position.y=-.02; base.castShadow=true; base.receiveShadow=true; cardRoot.add(base);
+
+  const innerTex = makeInnerTexture();
+  const innerPlane = new THREE.Mesh(new THREE.PlaneGeometry(W*.93,H*.87),new THREE.MeshBasicMaterial({map:innerTex,transparent:true,toneMapped:false}));
+  innerPlane.rotation.x = -Math.PI/2; innerPlane.position.set(0,.057,.02); cardRoot.add(innerPlane);
+
+  // subtle gold border on inside
+  const border = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(W*.94,.01,H*.9)),new THREE.LineBasicMaterial({color:0xb88435,transparent:true,opacity:.38}));
+  border.position.y=.062; cardRoot.add(border);
+
+  // Cover hinge at back edge (z=-H/2)
+  const hinge = new THREE.Group(); hinge.position.set(0,.04,-H/2); cardRoot.add(hinge);
+  const cover = new THREE.Group(); cover.position.z=H/2; hinge.add(cover);
+  const coverTex = makeCoverTexture();
+  const coverMesh = new THREE.Mesh(new THREE.BoxGeometry(W,.10,H),new THREE.MeshPhysicalMaterial({map:coverTex,roughness:.58,clearcoat:.15,clearcoatRoughness:.55}));
+  coverMesh.castShadow=true; coverMesh.receiveShadow=true; cover.add(coverMesh);
+  const coverEdges = new THREE.LineSegments(new THREE.EdgesGeometry(coverMesh.geometry),new THREE.LineBasicMaterial({color:0xd7c4a8,transparent:true,opacity:.25})); cover.add(coverEdges);
+
+  // Start closed: cover horizontal, just above base. Open target rotates up/back.
+  hinge.rotation.x = 0;
+
+  // confetti / hearts system
+  const confetti = [];
+  let burstDoneForOpen = false;
+  const colors=[0xff6b8a,0xffbe4f,0x8b7cff,0x6ee7c6,0xffffff,0xff89d0];
+
+  function spawnBurst(){
+    for(let i=0;i<85;i++){
+      const isHeart=Math.random()<.36;
+      let mesh;
+      if(isHeart){
+        mesh=new THREE.Mesh(makeHeartGeometry(.07+Math.random()*.035),new THREE.MeshBasicMaterial({color:colors[(Math.random()*colors.length)|0],side:THREE.DoubleSide}));
+      }else{
+        mesh=new THREE.Mesh(new THREE.PlaneGeometry(.025+Math.random()*.045,.16+Math.random()*.18),new THREE.MeshBasicMaterial({color:colors[(Math.random()*colors.length)|0],side:THREE.DoubleSide}));
+      }
+      mesh.position.set((Math.random()-.5)*.5,.18,(Math.random()-.5)*.34);
+      cardRoot.add(mesh);
+      mesh.userData.v=new THREE.Vector3((Math.random()-.5)*2.6,1.8+Math.random()*2.7,(Math.random()-.5)*2.4);
+      mesh.userData.spin=new THREE.Vector3((Math.random()-.5)*7,(Math.random()-.5)*7,(Math.random()-.5)*7);
+      mesh.userData.life=1.8+Math.random()*1.7; confetti.push(mesh);
+    }
+  }
+
+  // ---------- INTERACTION ----------
+  let desiredOpen=0, currentOpen=0;
+  // A forward-facing default tilt keeps both the cover and inside message easy to read.
+  let yaw=0, pitch=0.82, targetYaw=0,targetPitch=0.82;
+  let dragging=false,lastX=0,lastY=0,dragDistance=0;
+  let zoom=8.2,targetZoom=8.2;
+
+  renderer.domElement.addEventListener('pointerdown',e=>{dragging=true;dragDistance=0;lastX=e.clientX;lastY=e.clientY; renderer.domElement.setPointerCapture(e.pointerId)});
+  renderer.domElement.addEventListener('pointermove',e=>{if(!dragging)return; const dx=e.clientX-lastX,dy=e.clientY-lastY; dragDistance+=Math.hypot(dx,dy); targetYaw+=dx*.006; targetPitch+=dy*.004; targetPitch=Math.max(-1.25,Math.min(1.25,targetPitch)); lastX=e.clientX;lastY=e.clientY;});
+  renderer.domElement.addEventListener('pointerup',()=>{if(dragging && dragDistance<7) setOpen(desiredOpen<.5); dragging=false;});
+  renderer.domElement.addEventListener('wheel',e=>{targetZoom+=e.deltaY*.005; targetZoom=Math.max(6.3,Math.min(10.5,targetZoom));},{passive:true});
+  fallbackButton.addEventListener('click',e=>{e.stopPropagation();setOpen(desiredOpen<.5);});
+
+  // ---------- CELEBRATION SOUND ----------
+  // A short synthesized "confetti pop + sparkle" effect, so the HTML stays self-contained.
+  let audioCtx=null;
+  function getAudioCtx(){
+    if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
+    return audioCtx;
+  }
+  function playCelebrationSound(){
+    try{
+      const ctx=getAudioCtx(), now=ctx.currentTime;
+      const master=ctx.createGain();
+      master.gain.setValueAtTime(.0001,now);
+      master.gain.exponentialRampToValueAtTime(.34,now+.012);
+      master.gain.exponentialRampToValueAtTime(.0001,now+.95);
+      master.connect(ctx.destination);
+
+      // Soft party-popper burst made from filtered noise.
+      const dur=.32, buffer=ctx.createBuffer(1,Math.floor(ctx.sampleRate*dur),ctx.sampleRate);
+      const data=buffer.getChannelData(0);
+      for(let i=0;i<data.length;i++){
+        const x=i/data.length;
+        data[i]=(Math.random()*2-1)*Math.pow(1-x,2.5);
+      }
+      const noise=ctx.createBufferSource(); noise.buffer=buffer;
+      const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1750; bp.Q.value=.65;
+      const ng=ctx.createGain(); ng.gain.setValueAtTime(.78,now); ng.gain.exponentialRampToValueAtTime(.001,now+dur);
+      noise.connect(bp).connect(ng).connect(master); noise.start(now);
+
+      // Three bright sparkle notes rising after the pop.
+      [1046.5,1318.5,1568].forEach((freq,i)=>{
+        const o=ctx.createOscillator(), g=ctx.createGain();
+        o.type='sine'; o.frequency.setValueAtTime(freq,now+.07+i*.075);
+        g.gain.setValueAtTime(.0001,now+.07+i*.075);
+        g.gain.exponentialRampToValueAtTime(.18-i*.025,now+.085+i*.075);
+        g.gain.exponentialRampToValueAtTime(.0001,now+.34+i*.075);
+        o.connect(g).connect(master);
+        o.start(now+.07+i*.075); o.stop(now+.38+i*.075);
+      });
+    }catch(e){}
+  }
+
+  // Unlock Web Audio on the first direct pointer interaction when browsers require it.
+  addEventListener('pointerdown',()=>{try{getAudioCtx();}catch(e){}},{once:true});
+
+  function setOpen(open){
+    const next=open?1:0;
+    if(next===desiredOpen) return;
+    desiredOpen=next;
+    fallbackButton.textContent=open?'Close card':'Open card';
+    if(open){
+      burstDoneForOpen=false;
+      playCelebrationSound();
+    }
+  }
+
+  // ---------- MEDIAPIPE HANDS ----------
+  let hands, mpCamera;
+  let lastGesture='none', stableFrames=0, lastAction=0;
+
+  function fingerExtended(lm,tip,pip,mcp){
+    // For four fingers: tip farther from wrist than pip, and tip above pip in image y.
+    const wrist=lm[0];
+    const dTip=Math.hypot(lm[tip].x-wrist.x,lm[tip].y-wrist.y);
+    const dPip=Math.hypot(lm[pip].x-wrist.x,lm[pip].y-wrist.y);
+    return dTip>dPip*1.08 && lm[tip].y<lm[pip].y+0.025;
+  }
+  function classifyGesture(lm){
+    if(!lm) return 'none';
+    let ext=0;
+    if(fingerExtended(lm,8,6,5)) ext++;
+    if(fingerExtended(lm,12,10,9)) ext++;
+    if(fingerExtended(lm,16,14,13)) ext++;
+    if(fingerExtended(lm,20,18,17)) ext++;
+    const thumbSpan=Math.hypot(lm[4].x-lm[5].x,lm[4].y-lm[5].y);
+    const palmSpan=Math.hypot(lm[5].x-lm[17].x,lm[5].y-lm[17].y);
+    const thumbOpen=thumbSpan>palmSpan*.55;
+    if(ext>=4 || (ext>=3 && thumbOpen)) return 'open';
+    if(ext<=1 && !thumbOpen) return 'closed';
+    return 'neutral';
+  }
+
+  async function initHands(){
+    try{
+      hands = new Hands({locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+      hands.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:.65,minTrackingConfidence:.62});
+      hands.onResults(results=>{
+        const lm=results.multiHandLandmarks && results.multiHandLandmarks[0];
+        const g=classifyGesture(lm);
+        if(g===lastGesture) stableFrames++; else {lastGesture=g;stableFrames=0;}
+        if(g==='open') {statusText.textContent='Open palm detected';statusDot.classList.add('live');}
+        else if(g==='closed') {statusText.textContent='Closed hand detected';statusDot.classList.add('live');}
+        else if(g==='neutral') {statusText.textContent='Hand detected';statusDot.classList.add('live');}
+        else {statusText.textContent='Show one hand to the camera';statusDot.classList.remove('live');}
+
+        const now=performance.now();
+        if(stableFrames>5 && now-lastAction>500){
+          if(g==='open'){setOpen(true);lastAction=now;}
+          else if(g==='closed'){setOpen(false);lastAction=now;}
+        }
+      });
+      mpCamera = new Camera(video,{onFrame:async()=>{await hands.send({image:video});},width:640,height:480});
+      await mpCamera.start();
+      statusText.textContent='Show one hand to the camera';
+    }catch(err){
+      console.warn(err);
+      statusText.textContent='Camera unavailable — click the card or button';
+      statusDot.classList.remove('live');
+      video.style.display='none';
+    }
+  }
+  initHands();
+
+  // ---------- TEXTURE HELPERS ----------
+  function makeCoverTexture(){
+    const c=document.createElement('canvas'); c.width=1400;c.height=940; const x=c.getContext('2d');
+    const g=x.createLinearGradient(0,0,c.width,c.height); g.addColorStop(0,'#efe2cf');g.addColorStop(.52,'#f8eddd');g.addColorStop(1,'#dfcdb5'); x.fillStyle=g;x.fillRect(0,0,c.width,c.height);
+    // soft vignette
+    const rg=x.createRadialGradient(700,450,80,700,450,690);rg.addColorStop(0,'rgba(255,255,255,.15)');rg.addColorStop(1,'rgba(98,63,33,.16)');x.fillStyle=rg;x.fillRect(0,0,c.width,c.height);
+    x.strokeStyle='rgba(155,115,60,.48)';x.lineWidth=5;x.strokeRect(54,54,c.width-108,c.height-108);
+    x.fillStyle='#6f5337';x.textAlign='center';x.font='600 38px Georgia, serif';x.fillText("HAPPY TEACHERS' DAY",700,140);
+    x.font='italic 28px Georgia, serif';x.fillStyle='rgba(96,73,51,.82)';x.fillText('With gratitude and warmest wishes',700,188);
+
+    // bouquet stems
+    x.save();x.translate(435,500);x.lineCap='round';
+    const stemCols=['#4f7a55','#5a875e','#658f67'];
+    for(let i=0;i<15;i++){x.strokeStyle=stemCols[i%3];x.lineWidth=10;x.beginPath();x.moveTo(0,150);x.quadraticCurveTo((i-7)*10,30,(i-7)*17,-80-Math.random()*50);x.stroke();}
+    const flowerCols=['#cf7483','#e0a44d','#b889b8','#d98d71','#f0d0a0'];
+    for(let i=0;i<12;i++){
+      const px=(i%6-2.5)*55+(i>5?25:0), py=-88-(i%3)*42;
+      x.fillStyle=flowerCols[i%flowerCols.length];
+      for(let p=0;p<6;p++){const a=p*Math.PI/3;x.beginPath();x.ellipse(px+Math.cos(a)*20,py+Math.sin(a)*20,18,12,a,0,Math.PI*2);x.fill();}
+      x.fillStyle='#7b5b2c';x.beginPath();x.arc(px,py,8,0,Math.PI*2);x.fill();
+    }
+    x.fillStyle='#c39a6b';x.beginPath();x.moveTo(-95,70);x.lineTo(95,70);x.lineTo(45,210);x.lineTo(-45,210);x.closePath();x.fill();
+    x.restore();
+
+    // cake
+    x.save();x.translate(940,545);
+    x.fillStyle='#c98f64';roundRect(x,-125,15,250,115,22);x.fill();
+    x.fillStyle='#f3d5c1';roundRect(x,-126,-28,252,65,22);x.fill();
+    x.fillStyle='#f8ece1';for(let i=-90;i<=90;i+=45){x.beginPath();x.arc(i,3,23,0,Math.PI);x.fill();}
+    x.fillStyle='#b4687a';for(let i=-82;i<=82;i+=41){x.beginPath();x.arc(i,-28,14,0,Math.PI*2);x.fill();}
+    // candle
+    x.fillStyle='#7d6eb7';roundRect(x,-8,-118,16,82,8);x.fill();
+    x.fillStyle='#ffbd5c';x.beginPath();x.moveTo(0,-154);x.bezierCurveTo(-20,-132,-13,-115,0,-107);x.bezierCurveTo(14,-118,19,-136,0,-154);x.fill();
+    x.shadowColor='#ffb45d';x.shadowBlur=24;x.fillStyle='rgba(255,195,94,.55)';x.beginPath();x.arc(0,-132,18,0,Math.PI*2);x.fill();x.shadowBlur=0;
+    x.restore();
+
+    return new THREE.CanvasTexture(c);
+  }
+
+  function makeInnerTexture(){
+    const c=document.createElement('canvas'); c.width=1600;c.height=1040; const x=c.getContext('2d');
+    x.fillStyle='rgba(255,255,255,0)';x.clearRect(0,0,c.width,c.height);
+    x.textAlign='center';
+    x.fillStyle='#5a4633';x.font='600 58px Georgia, serif';x.fillText('Dear Prof. Wu,',800,225);
+    x.fillStyle='#8d6533';x.font='700 76px Georgia, serif';x.fillText("Happy Teachers' Day!",800,335);
+    x.fillStyle='#69533e';x.font='36px Georgia, serif';
+    const lines=[
+      'May your academic journey continue to flourish,',
+      'and your work go smoothly.',
+      'Wishing you lasting inspiration, good health,',
+      'and many rewarding moments in teaching and research.'
+    ];
+    lines.forEach((t,i)=>x.fillText(t,800,455+i*62));
+    x.fillStyle='#a27941';x.font='italic 31px Georgia, serif';x.fillText('With sincere gratitude and best wishes,',800,785);
+    x.fillStyle='#6f5742';x.font='600 31px Georgia, serif';x.fillText('Leru',800,840);
+    // decorative sparkles
+    for(let i=0;i<18;i++){
+      const px=140+Math.random()*1320,py=120+Math.random()*750,r=2+Math.random()*4;
+      x.fillStyle=`rgba(177,126,60,${.18+Math.random()*.35})`;x.beginPath();x.arc(px,py,r,0,Math.PI*2);x.fill();
+    }
+    return new THREE.CanvasTexture(c);
+  }
+  function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+  function makeGlowTexture(){
+    const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');const g=x.createRadialGradient(64,64,0,64,64,64);g.addColorStop(0,'rgba(255,245,210,1)');g.addColorStop(.18,'rgba(255,190,95,.85)');g.addColorStop(.5,'rgba(255,122,48,.22)');g.addColorStop(1,'rgba(255,90,30,0)');x.fillStyle=g;x.fillRect(0,0,128,128);return new THREE.CanvasTexture(c);
+  }
+  function makeHeartGeometry(s){
+    const sh=new THREE.Shape();
+    sh.moveTo(0,-.5*s);sh.bezierCurveTo(-1.05*s,-1.25*s,-1.75*s,-.15*s,0,.95*s);sh.bezierCurveTo(1.75*s,-.15*s,1.05*s,-1.25*s,0,-.5*s);
+    return new THREE.ShapeGeometry(sh,18);
+  }
+
+  // ---------- ANIMATION ----------
+  const clock=new THREE.Clock();
+  function animate(){
+    requestAnimationFrame(animate);
+    const dt=Math.min(clock.getDelta(),.033), t=performance.now()*.001;
+
+    // smooth card open/close; opening angle 118 degrees
+    currentOpen += (desiredOpen-currentOpen)*(1-Math.pow(.001,dt));
+    const eased=currentOpen*currentOpen*(3-2*currentOpen);
+    hinge.rotation.x = -eased * THREE.MathUtils.degToRad(118);
+
+    if(desiredOpen===1 && currentOpen>.38 && !burstDoneForOpen){spawnBurst();burstDoneForOpen=true;}
+
+    // whole card float and user rotation
+    yaw += (targetYaw-yaw)*.08; pitch += (targetPitch-pitch)*.08; zoom += (targetZoom-zoom)*.08;
+    cardRoot.rotation.y=yaw; cardRoot.rotation.x=pitch + Math.sin(t*.7)*.015;
+    cardRoot.position.y=.08 + Math.sin(t*.8)*.055;
+    camera.position.z=zoom;
+
+    // confetti physics
+    for(let i=confetti.length-1;i>=0;i--){
+      const m=confetti[i];m.userData.life-=dt;m.userData.v.y-=2.35*dt;m.position.addScaledVector(m.userData.v,dt);m.rotation.x+=m.userData.spin.x*dt;m.rotation.y+=m.userData.spin.y*dt;m.rotation.z+=m.userData.spin.z*dt;
+      if(m.userData.life<.65 && m.material){m.material.transparent=true;m.material.opacity=Math.max(0,m.userData.life/.65);}
+      if(m.userData.life<=0){cardRoot.remove(m);m.geometry.dispose();m.material.dispose();confetti.splice(i,1);}
+    }
+
+    // candle shimmer
+    candleGroup.children.forEach((s,i)=>{const p=s.userData.phase;s.material.opacity=.16+.12*Math.sin(t*3.7+p)+.07*Math.sin(t*7.2+p*.4);s.scale.y*=1 + Math.sin(t*6+p)*.0009;});
+    candleLights.forEach(l=>l.intensity=7 + Math.sin(t*4.7+l.userData.phase)*2.2 + Math.sin(t*8.3+l.userData.phase)*1.0);
+    rim.intensity=35+Math.sin(t*3.4)*4;
+
+    renderer.render(scene,camera);
+  }
+  animate();
+
+  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+})();
+</script>
+</body>
+</html>
